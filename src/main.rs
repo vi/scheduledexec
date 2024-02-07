@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use tokio::time::Instant;
 use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
 
+/// REST service to execute series of command lines at specific moments of time
 #[derive(Parser)]
 struct Args {
     #[clap(flatten)]
