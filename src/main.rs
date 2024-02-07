@@ -98,7 +98,7 @@ struct App {
     state: Arc<Mutex<AppState>>,
     monitor: tokio::sync::broadcast::Sender<Status>,
     prefix: Option<String>,
-    cached_scenario: Arc<Mutex<Scenario>>,
+    cached_scenario: Arc<Mutex<Arc<Scenario>>>,
 }
 
 impl App {
@@ -111,16 +111,15 @@ impl App {
             state: Arc::new(Mutex::new(AppState::Idle)),
             monitor: tokio::sync::broadcast::Sender::new(1),
             prefix,
-            cached_scenario: Arc::new(Mutex::new(Scenario { entries: vec![] })),
+            cached_scenario: Arc::new(Mutex::new(Arc::new(Scenario { entries: vec![] }))),
         }
     }
 
     async fn start_agent(
         self,
-        mut scenario: Scenario,
+        scenario: Arc<Scenario>,
         updates: tokio::sync::watch::Sender<Status>,
     ) {
-        scenario.entries.sort_unstable_by_key(|x| x.t_ms);
         let start = Instant::now();
         let mut report = Report {
             error: false,
@@ -128,7 +127,7 @@ impl App {
             entries: Vec::with_capacity(scenario.entries.len()),
         };
         let prefix = self.prefix.clone();
-        for (i, scenario_entry) in scenario.entries.into_iter().enumerate() {
+        for (i, scenario_entry) in scenario.entries.iter().enumerate() {
             let _ = updates.send(Status::WaitingForLine(i));
 
             let ts = start + Duration::from_millis(scenario_entry.t_ms);
@@ -147,10 +146,10 @@ impl App {
             if prefix.is_none() && scenario_entry.cmd.is_empty() {
                 continue;
             }
-            let mut chunks = scenario_entry.cmd.into_iter();
+            let mut chunks = scenario_entry.cmd.iter();
 
             let mut cmd =
-                tokio::process::Command::new(prefix.clone().unwrap_or(chunks.next().unwrap()));
+                tokio::process::Command::new(prefix.clone().unwrap_or(chunks.next().unwrap().clone()));
             for ch in chunks {
                 cmd.arg(ch);
             }
@@ -204,7 +203,7 @@ async fn downloadreport(State(app): State<App>) -> Result<Json<Arc<Report>>, Sta
 }
 
 #[debug_handler]
-async fn getscenario(State(app): State<App>) -> Json<Scenario> {
+async fn getscenario(State(app): State<App>) -> Json<Arc<Scenario>> {
     Json(app.cached_scenario.lock().unwrap().clone())
 }
 
@@ -224,11 +223,14 @@ async fn monitor(
 }
 
 #[debug_handler]
-async fn start(State(app): State<App>, Json(scenario): Json<Scenario>) -> StatusCode {
+async fn start(State(app): State<App>, Json(mut scenario): Json<Scenario>) -> StatusCode {
     let mut s = app.st();
     if matches!(*s, AppState::Running { .. }) {
         return StatusCode::CONFLICT;
     }
+
+    scenario.entries.sort_unstable_by_key(|x| x.t_ms);
+    let scenario = Arc::new(scenario);
 
     let (tx, rx) = tokio::sync::watch::channel(Status::Idle);
 
