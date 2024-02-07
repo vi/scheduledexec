@@ -1,0 +1,18 @@
+[package]
+name = "scenariomanager"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.79"
+axum = { version = "0.7.4", features = ["macros"] }
+clap = { version = "4.4.18", default-features = false, features = ["help", "derive"] }
+futures = "0.3.30"
+http = "1.0.0"
+serde = { version = "1.0.196", features = ["derive", "rc"] }
+serde_json = "1.0.113"
+tokio = { version = "1.36.0", features = ["rt", "macros", "sync", "time", "process"] }
+tokio-listener = { version = "0.3.0", features = ["axum07", "clap"] }
+tokio-stream = { version = "0.1.14", features = ["sync"] }
