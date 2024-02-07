@@ -180,7 +180,7 @@ impl App {
             let mut chunks = scenario_entry.cmd.iter();
 
             let mut cmd = tokio::process::Command::new(
-                prefix.clone().unwrap_or(chunks.next().unwrap().clone()),
+                prefix.clone().unwrap_or_else(||chunks.next().unwrap().clone()),
             );
             for ch in chunks {
                 cmd.arg(ch);
