@@ -24,41 +24,72 @@ struct Args {
     prefix: Option<String>,
 }
 
+/// Single step in a scenario
 #[derive(Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 struct ScenarioEntry {
     /// Relative timestamp, in milliseconds
     t_ms: u64,
 
-    /// Command line to execute
+    /// Command line to execute, as indidivual argv elements
     cmd: Vec<String>,
 }
 
+/// Timed sequence of command lines to be executed remotely
 #[derive(Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 struct Scenario {
+    /// Steps to be executed in this scenario
     entries: Vec<ScenarioEntry>,
 }
 
+/// Current status of the service
 #[derive(Serialize, Clone, Copy)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[serde(tag = "status")]
 enum Status {
+    /// No scenario has been started
     Idle,
+    /// Scenario was finished successfully
     Completed,
+    /// Scenario was finished with error
     Errored,
+    /// Scenario was aborted externally
     Aborted,
-    WaitingForLine(usize),
-    ExecutingLine(usize),
+    /// Scenario is ongoing: waiting for a specified moment to execute an entry
+    WaitingForLine {
+        /// index of a scenario entry
+        line: usize,
+    },
+    /// Scenario is ongoing: waiting for a spawned process to finish
+    ExecutingLine {
+        /// index of a scenario entry
+        line: usize,
+    },
 }
 
+/// Information about execution outcome of a specific step from a scenario
 #[derive(Serialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 struct ReportEntry {
+    /// Content of stdout of the executed command line. Non-UTF-8 gets mangled.
     out: String,
+    /// Content of stderr of the executed command line. Non-UTF-8 gets mangled.
     err: String,
+    /// Exit code of the executed command line
     exitcode: i32,
+    /// Number of milliseconds spent in executing the command.
     timespan_ms: u64,
 }
+/// Summary of a completed scenario
 #[derive(Serialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 struct Report {
+    /// Whether the scenario finished with error, i.e. non-successful exit code of a command or missed deadline to execute some command
     error: bool,
+    /// Whether the scenario was aborted by /abort call. No detailed information about the steps would be provided in this case.
     aborted: bool,
+    /// Output of command lines executions involved in the scenario
     entries: Vec<ReportEntry>,
 }
 
@@ -128,7 +159,7 @@ impl App {
         };
         let prefix = self.prefix.clone();
         for (i, scenario_entry) in scenario.entries.iter().enumerate() {
-            let _ = updates.send(Status::WaitingForLine(i));
+            let _ = updates.send(Status::WaitingForLine { line: i });
 
             let ts = start + Duration::from_millis(scenario_entry.t_ms);
             let sleeper = tokio::time::sleep_until(ts);
@@ -141,15 +172,16 @@ impl App {
 
             sleeper.await;
 
-            let _ = updates.send(Status::ExecutingLine(i));
+            let _ = updates.send(Status::ExecutingLine { line: i });
 
             if prefix.is_none() && scenario_entry.cmd.is_empty() {
                 continue;
             }
             let mut chunks = scenario_entry.cmd.iter();
 
-            let mut cmd =
-                tokio::process::Command::new(prefix.clone().unwrap_or(chunks.next().unwrap().clone()));
+            let mut cmd = tokio::process::Command::new(
+                prefix.clone().unwrap_or(chunks.next().unwrap().clone()),
+            );
             for ch in chunks {
                 cmd.arg(ch);
             }
@@ -187,13 +219,29 @@ impl App {
     }
 }
 
+
 #[debug_handler]
+#[cfg_attr(feature = "utoipa", utoipa::path(
+    post,
+    path = "/status",
+    responses(
+        (status = 200, description = "Curent status of the scheduledexec instance", body=Status),
+    )
+))]
 async fn status(State(app): State<App>) -> Json<Status> {
     let s = app.st();
     Json(s.get_simple_status())
 }
 
 #[debug_handler]
+#[cfg_attr(feature = "utoipa", utoipa::path(
+    post,
+    path = "/downloadreport",
+    responses(
+        (status = 200, description = "Report of a finished scenario", body=Report),
+        (status = 404, description = "No finished scenario"),
+    )
+))]
 async fn downloadreport(State(app): State<App>) -> Result<Json<Arc<Report>>, StatusCode> {
     let s = app.st();
     match &*s {
@@ -203,11 +251,25 @@ async fn downloadreport(State(app): State<App>) -> Result<Json<Arc<Report>>, Sta
 }
 
 #[debug_handler]
+#[cfg_attr(feature = "utoipa", utoipa::path(
+    post,
+    path = "/getscenario",
+    responses(
+        (status = 200, description = "Recently started scenario or empty scenario if nothing was started so far", body = Scenario),
+    )
+))]
 async fn getscenario(State(app): State<App>) -> Json<Arc<Scenario>> {
     Json(app.cached_scenario.lock().unwrap().clone())
 }
 
 #[debug_handler]
+#[cfg_attr(feature = "utoipa", utoipa::path(
+    post,
+    path = "/monitor",
+    responses(
+        (status = 200, description = "Obtain SSE stream with /status updates", content_type="text/event-stream", body = ()),
+    )
+))]
 async fn monitor(
     State(app): State<App>,
 ) -> Sse<impl futures::Stream<Item = Result<Event, Infallible>>> {
@@ -222,6 +284,15 @@ async fn monitor(
     Sse::new(stream).keep_alive(KeepAlive::default())
 }
 
+/// Upload and start a scenario
+#[cfg_attr(feature = "utoipa", utoipa::path(
+    post,
+    path = "/start",
+    responses(
+        (status = 200, description = "Scenario has been started"),
+        (status = 409, description = "Scenario is already running"),
+    )
+))]
 #[debug_handler]
 async fn start(State(app): State<App>, Json(mut scenario): Json<Scenario>) -> StatusCode {
     let mut s = app.st();
@@ -253,6 +324,15 @@ async fn start(State(app): State<App>, Json(mut scenario): Json<Scenario>) -> St
     StatusCode::OK
 }
 
+/// Abort the ongoing scenario
+#[cfg_attr(feature = "utoipa", utoipa::path(
+    get,
+    path = "/abort",
+    responses(
+        (status = 200, description = "Scenario has been aborted"),
+        (status = 404, description = "No scenario was ongoing"),
+    )
+))]
 #[debug_handler]
 async fn abort(State(app): State<App>) -> StatusCode {
     let mut s = app.st();
@@ -273,6 +353,14 @@ async fn abort(State(app): State<App>) -> StatusCode {
     }
 }
 
+/// Show short help about REST paths
+#[cfg_attr(feature = "utoipa", utoipa::path(
+    get,
+    path = "/",
+    responses(
+        (status = 200, description = "Plain text")
+    )
+))]
 #[debug_handler]
 async fn help() -> &'static str {
     "/start - begin executing a scenario
@@ -281,7 +369,46 @@ async fn help() -> &'static str {
 /monitor - subscribe to events     
 /getscenario - get current or last scenario
 /report - download final scenario report
+/api-docs/openapi.json - download JSON with OpenAPI specification
 "
+}
+
+#[cfg(feature = "utoipa")]
+#[derive(utoipa::OpenApi)]
+#[openapi(
+    paths(
+        openapi,
+        help,
+        abort,
+        start,
+        status,
+        monitor,
+        getscenario,
+        downloadreport,
+    ),
+    components(schemas(Scenario, ScenarioEntry, ReportEntry, Report, Status))
+)]
+struct OpenApiDoc;
+
+
+#[cfg(feature = "utoipa")]
+#[debug_handler]
+#[utoipa::path(
+    get,
+    path = "/api-docs/openapi.json",
+    responses(
+        (status = 200, description = "JSON file")
+    )
+)]
+async fn openapi() -> Result<String, StatusCode> {
+    use utoipa::OpenApi;
+    match OpenApiDoc::openapi().to_pretty_json() {
+        Ok(x) => Ok(x),
+        Err(e) => {
+            eprintln!("Error: {e}");
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -296,8 +423,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/getscenario", get(getscenario))
         .route("/report", get(downloadreport))
         .route("/abort", post(abort))
-        .route("/start", post(start))
-        .with_state(state);
+        .route("/start", post(start));
+
+    #[cfg(feature = "utoipa")]
+    let app = app.route("/api-docs/openapi.json", get(openapi));
+
+    let app = app.with_state(state);
 
     tokio_listener::axum07::serve(l, app.into_make_service()).await?;
     Ok(())

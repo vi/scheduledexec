@@ -15,3 +15,4 @@ serde_json = "1.0.113"
 tokio = { version = "1.36.0", features = ["rt", "macros", "sync", "time", "process"] }
 tokio-listener = { version = "0.3.0", features = ["axum07", "clap"] }
 tokio-stream = { version = "0.1.14", features = ["sync"] }
+utoipa = { version = "4.2.0", features = ["axum_extras"] , optional=true}
