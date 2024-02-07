@@ -1,0 +1,378 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "scheduledexec",
+    "description": "",
+    "license": {
+      "name": ""
+    },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/": {
+      "get": {
+        "tags": [
+          "crate"
+        ],
+        "summary": "Show short help about REST paths",
+        "description": "Show short help about REST paths",
+        "operationId": "help",
+        "responses": {
+          "200": {
+            "description": "Plain text"
+          }
+        }
+      }
+    },
+    "/abort": {
+      "get": {
+        "tags": [
+          "crate"
+        ],
+        "summary": "Abort the ongoing scenario",
+        "description": "Abort the ongoing scenario",
+        "operationId": "abort",
+        "responses": {
+          "200": {
+            "description": "Scenario has been aborted"
+          },
+          "404": {
+            "description": "No scenario was ongoing"
+          }
+        }
+      }
+    },
+    "/api-docs/openapi.json": {
+      "get": {
+        "tags": [
+          "crate"
+        ],
+        "operationId": "openapi",
+        "responses": {
+          "200": {
+            "description": "JSON file"
+          }
+        }
+      }
+    },
+    "/downloadreport": {
+      "post": {
+        "tags": [
+          "crate"
+        ],
+        "operationId": "downloadreport",
+        "responses": {
+          "200": {
+            "description": "Report of a finished scenario",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Report"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No finished scenario"
+          }
+        }
+      }
+    },
+    "/getscenario": {
+      "post": {
+        "tags": [
+          "crate"
+        ],
+        "operationId": "getscenario",
+        "responses": {
+          "200": {
+            "description": "Recently started scenario or empty scenario if nothing was started so far",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Scenario"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/monitor": {
+      "post": {
+        "tags": [
+          "crate"
+        ],
+        "operationId": "monitor",
+        "responses": {
+          "200": {
+            "description": "Obtain SSE stream with /status updates",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "default": null,
+                  "nullable": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/start": {
+      "post": {
+        "tags": [
+          "crate"
+        ],
+        "summary": "Upload and start a scenario",
+        "description": "Upload and start a scenario",
+        "operationId": "start",
+        "requestBody": {
+          "description": "",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Scenario"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Scenario has been started"
+          },
+          "409": {
+            "description": "Scenario is already running"
+          }
+        }
+      }
+    },
+    "/status": {
+      "post": {
+        "tags": [
+          "crate"
+        ],
+        "operationId": "status",
+        "responses": {
+          "200": {
+            "description": "Curent status of the scheduledexec instance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Report": {
+        "type": "object",
+        "description": "Summary of a completed scenario",
+        "required": [
+          "error",
+          "aborted",
+          "entries"
+        ],
+        "properties": {
+          "aborted": {
+            "type": "boolean",
+            "description": "Whether the scenario was aborted by /abort call. No detailed information about the steps would be provided in this case."
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportEntry"
+            },
+            "description": "Output of command lines executions involved in the scenario"
+          },
+          "error": {
+            "type": "boolean",
+            "description": "Whether the scenario finished with error, i.e. non-successful exit code of a command or missed deadline to execute some command"
+          }
+        }
+      },
+      "ReportEntry": {
+        "type": "object",
+        "description": "Information about execution outcome of a specific step from a scenario",
+        "required": [
+          "out",
+          "err",
+          "exitcode",
+          "timespan_ms"
+        ],
+        "properties": {
+          "err": {
+            "type": "string",
+            "description": "Content of stderr of the executed command line. Non-UTF-8 gets mangled."
+          },
+          "exitcode": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Exit code of the executed command line"
+          },
+          "out": {
+            "type": "string",
+            "description": "Content of stdout of the executed command line. Non-UTF-8 gets mangled."
+          },
+          "timespan_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Number of milliseconds spent in executing the command.",
+            "minimum": 0
+          }
+        }
+      },
+      "Scenario": {
+        "type": "object",
+        "description": "Timed sequence of command lines to be executed remotely",
+        "required": [
+          "entries"
+        ],
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScenarioEntry"
+            },
+            "description": "Steps to be executed in this scenario"
+          }
+        }
+      },
+      "ScenarioEntry": {
+        "type": "object",
+        "description": "Single step in a scenario",
+        "required": [
+          "t_ms",
+          "cmd"
+        ],
+        "properties": {
+          "cmd": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Command line to execute, as indidivual argv elements"
+          },
+          "t_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Relative timestamp, in milliseconds",
+            "minimum": 0
+          }
+        }
+      },
+      "Status": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "Idle"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "Completed"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "Errored"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "Aborted"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Scenario is ongoing: waiting for a specified moment to execute an entry",
+            "required": [
+              "line",
+              "status"
+            ],
+            "properties": {
+              "line": {
+                "type": "integer",
+                "description": "index of a scenario entry",
+                "minimum": 0
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "WaitingForLine"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Scenario is ongoing: waiting for a spawned process to finish",
+            "required": [
+              "line",
+              "status"
+            ],
+            "properties": {
+              "line": {
+                "type": "integer",
+                "description": "index of a scenario entry",
+                "minimum": 0
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "ExecutingLine"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Current status of the service",
+        "discriminator": {
+          "propertyName": "status"
+        }
+      }
+    }
+  }
+}
