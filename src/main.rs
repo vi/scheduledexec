@@ -283,7 +283,7 @@ async fn help() -> &'static str {
 }
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let a: Args = Args::parse();
     let l = a.listen_spec.bind().await?;
     let state = App::new(a.prefix);

@@ -24,12 +24,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8901269c6307e8d93993578286ac0edf7f195079ffff5ebdeea6a59ffb7e36bc"
 
 [[package]]
-name = "anyhow"
-version = "1.0.79"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "080e9890a082662b09c1ad45f567faeeb47f22b5fb23895fbe1e651e718e25ca"
-
-[[package]]
 name = "async-trait"
 version = "0.1.77"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -607,7 +601,6 @@ checksum = "f98d2aa92eebf49b69786be48e4477826b256916e84a57ff2a4f21923b48eb4c"
 name = "scenariomanager"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "axum",
  "clap",
  "futures",
@@ -736,9 +729,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-listener"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2304dd11fd69a41b964c601422f3800368f72fbb3c3651e1fd0eab38bf6f57a7"
+checksum = "eef5533a56e7cd9a4fcc6540eabe0a84887d127afd405687a11812d7c11c26b7"
 dependencies = [
  "axum",
  "clap",
